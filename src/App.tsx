@@ -14,7 +14,8 @@ import {
   Copy,
   CheckCircle2,
   ExternalLink,
-  Coffee
+  Coffee,
+  Share2
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
@@ -94,18 +95,55 @@ export default function App() {
   const handleDownload = async () => {
     if (!outputRef.current) return;
     
+    setIsGenerating(true); // Show loading state during capture
+    try {
+      const dataUrl = await toPng(outputRef.current, {
+        backgroundColor: '#ffffff',
+        pixelRatio: 3, // Higher quality for mobile/print
+        skipFonts: false,
+      });
+      
+      const filename = `${itemName || 'code'}-${Date.now()}.png`;
+      
+      // Standard download
+      const link = document.createElement('a');
+      link.download = filename;
+      link.href = dataUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (err) {
+      console.error('Download failed', err);
+      alert('Erro ao baixar imagem. Tente novamente.');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const handleShare = async () => {
+    if (!outputRef.current) return;
+    
     try {
       const dataUrl = await toPng(outputRef.current, {
         backgroundColor: '#ffffff',
         pixelRatio: 2,
       });
       
-      const link = document.createElement('a');
-      link.download = `${itemName || 'code'}-${Date.now()}.png`;
-      link.href = dataUrl;
-      link.click();
+      const blob = await (await fetch(dataUrl)).blob();
+      const file = new File([blob], 'code.png', { type: 'image/png' });
+      
+      if (navigator.share && navigator.canShare({ files: [file] })) {
+        await navigator.share({
+          files: [file],
+          title: itemName || 'Meu Código',
+          text: 'Gerado via CodeCraft-Bryan',
+        });
+      } else {
+        handleCopyLink();
+      }
     } catch (err) {
-      console.error('Download failed', err);
+      console.error('Share failed', err);
+      handleCopyLink();
     }
   };
 
@@ -124,7 +162,7 @@ export default function App() {
               <QrCode className="text-white w-6 h-6" />
             </div>
             <div>
-              <h1 className="font-bold text-lg tracking-tight">CodeCraft</h1>
+              <h1 className="font-bold text-lg tracking-tight">CodeCraft-Bryan</h1>
               <p className="text-[10px] text-zinc-500 uppercase tracking-widest font-semibold">Professional Generator</p>
             </div>
           </div>
@@ -408,9 +446,9 @@ export default function App() {
           <motion.div 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            className="space-y-6"
+            className="space-y-6 lg:sticky lg:top-24"
           >
-            <div className="bg-zinc-900/50 border border-zinc-800 rounded-[32px] p-8 md:p-12 min-h-[500px] flex flex-col items-center justify-center relative overflow-hidden">
+            <div className="bg-zinc-900/50 border border-zinc-800 rounded-[32px] p-6 md:p-12 min-h-[350px] md:min-h-[500px] flex flex-col items-center justify-center relative overflow-hidden">
               {/* Decorative elements */}
               <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
                 <div className="absolute top-10 left-10 w-32 h-32 bg-indigo-500 rounded-full blur-[100px]" />
@@ -429,47 +467,63 @@ export default function App() {
                     {/* The Downloadable Area */}
                     <div 
                       ref={outputRef}
-                      className="bg-white p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-6"
+                      className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-4 md:gap-6 w-fit mx-auto"
                     >
                       {itemName && (
-                        <h3 className="text-zinc-900 font-bold text-xl tracking-tight text-center">
+                        <h3 className="text-zinc-900 font-bold text-lg md:text-xl tracking-tight text-center max-w-[200px] md:max-w-xs break-words">
                           {itemName}
                         </h3>
                       )}
                       
-                      <div className="bg-white">
+                      <div className="bg-white p-2">
                         {codeType === 'qrcode' ? (
-                          <QRCodeCanvas 
-                            value={data}
-                            size={qrSize}
-                            fgColor={qrColor}
-                            level="H"
-                            includeMargin={false}
-                          />
+                          <div className="w-full max-w-[200px] md:max-w-none">
+                            <QRCodeCanvas 
+                              value={data}
+                              size={qrSize > 400 ? 400 : qrSize} // Cap preview size for UI but keep download size
+                              fgColor={qrColor}
+                              level="H"
+                              includeMargin={false}
+                              style={{ width: '100%', height: 'auto' }}
+                            />
+                          </div>
                         ) : (
-                          <svg ref={barcodeRef}></svg>
+                          <div className="overflow-x-auto max-w-full">
+                            <svg ref={barcodeRef}></svg>
+                          </div>
                         )}
                       </div>
 
                       <div className="pt-4 border-t border-zinc-100 w-full text-center">
-                        <p className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">
-                          Gerado via CodeCraft
+                        <p className="text-[8px] md:text-[10px] text-zinc-400 font-bold uppercase tracking-widest">
+                          Gerado via CodeCraft-Bryan
                         </p>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center justify-center gap-4 w-full">
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full">
                       <button 
                         onClick={handleDownload}
-                        className="flex-1 min-w-[160px] bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-6 rounded-2xl shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2"
+                        disabled={isGenerating}
+                        className="w-full sm:flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-6 rounded-2xl shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2"
                       >
-                        <Download className="w-5 h-5" />
+                        {isGenerating ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
                         Baixar PNG
                       </button>
                       
+                      {navigator.share && (
+                        <button 
+                          onClick={handleShare}
+                          className="w-full sm:flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-6 rounded-2xl shadow-lg shadow-indigo-500/20 transition-all flex items-center justify-center gap-2"
+                        >
+                          <Share2 className="w-5 h-5" />
+                          Compartilhar
+                        </button>
+                      )}
+
                       <button 
                         onClick={handleCopyLink}
-                        className="flex-1 min-w-[160px] bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-4 px-6 rounded-2xl border border-zinc-700 transition-all flex items-center justify-center gap-2"
+                        className="w-full sm:flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-4 px-6 rounded-2xl border border-zinc-700 transition-all flex items-center justify-center gap-2"
                       >
                         {copied ? (
                           <>
