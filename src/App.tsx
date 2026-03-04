@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { QRCodeCanvas } from 'qrcode.react';
+import { QRCodeSVG } from 'qrcode.react';
 import JsBarcode from 'jsbarcode';
 import { toPng } from 'html-to-image';
 import { 
@@ -17,7 +17,6 @@ import {
   Coffee,
   Share2
 } from 'lucide-react';
-import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
 
 type CodeType = 'qrcode' | 'CODE128' | 'EAN13' | 'UPC' | 'CODE39' | 'ITF14' | 'CODABAR';
@@ -93,11 +92,12 @@ export default function App() {
       setGenerated(true);
       setIsGenerating(false);
       
-      // Scroll to result on mobile
-      if (window.innerWidth < 1024) {
-        outputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      // Scroll to result on mobile - using a safer check
+      const element = document.getElementById('result-preview');
+      if (element && window.innerWidth < 1024) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
-    }, 300);
+    }, 100);
   };
 
   const handleDownload = async () => {
@@ -194,12 +194,8 @@ export default function App() {
       <main className="max-w-7xl mx-auto px-4 py-8 md:py-12">
         <div className="grid lg:grid-cols-[400px_1fr] gap-8 items-start">
           {/* Left Panel: Controls */}
-          <motion.div 
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            className="space-y-6"
-          >
-            <section className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-6 space-y-6">
+          <div className="space-y-6">
+            <section className="bg-zinc-900/80 border border-zinc-800 rounded-3xl p-6 space-y-6 shadow-xl">
               <div className="flex items-center gap-2 text-zinc-400">
                 <Settings2 className="w-4 h-4" />
                 <h2 className="text-sm font-semibold uppercase tracking-wider">Configurações</h2>
@@ -450,11 +446,11 @@ export default function App() {
                 </div>
               )}
             </section>
-          </motion.div>
+          </div>
 
           {/* Right Panel: Preview */}
-          <div className="space-y-6 lg:sticky lg:top-24">
-            <div className="bg-zinc-900/50 border border-zinc-800 rounded-[32px] p-6 md:p-12 min-h-[350px] md:min-h-[500px] flex flex-col items-center justify-center relative overflow-hidden">
+          <div id="result-preview" className="space-y-6 lg:sticky lg:top-24">
+            <div className="bg-zinc-900/80 border border-zinc-800 rounded-[32px] p-6 md:p-12 min-h-[350px] md:min-h-[500px] flex flex-col items-center justify-center relative overflow-hidden shadow-xl">
               {/* Decorative elements */}
               <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
                 <div className="absolute top-10 left-10 w-32 h-32 bg-indigo-500 rounded-full blur-[100px]" />
@@ -482,7 +478,7 @@ export default function App() {
                     <div className="bg-white p-2 flex items-center justify-center min-h-[150px]">
                       {codeType === 'qrcode' ? (
                         <div className="w-full flex justify-center">
-                          <QRCodeCanvas 
+                          <QRCodeSVG 
                             value={data}
                             size={qrSize > 512 ? 512 : qrSize}
                             fgColor={qrColor}

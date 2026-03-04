@@ -12,6 +12,7 @@
 }
 
 .grid-pattern {
-  background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.05) 1px, transparent 0);
+  background-color: #09090b;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 0);
   background-size: 24px 24px;
 }
