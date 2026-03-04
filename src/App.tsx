@@ -80,32 +80,42 @@ export default function App() {
       finalData = data;
     }
 
-    if (!finalData) return;
+    if (!finalData) {
+      alert('Por favor, insira os dados para gerar o código.');
+      return;
+    }
 
     setIsGenerating(true);
-    setData(finalData);
     
-    // Simulate generation delay for "crafted" feel
+    // Small timeout to show loading state and ensure clean render
     setTimeout(() => {
+      setData(finalData);
       setGenerated(true);
       setIsGenerating(false);
-    }, 600);
+      
+      // Scroll to result on mobile
+      if (window.innerWidth < 1024) {
+        outputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 300);
   };
 
   const handleDownload = async () => {
     if (!outputRef.current) return;
     
-    setIsGenerating(true); // Show loading state during capture
+    setIsGenerating(true);
     try {
+      // Small delay to ensure DOM is ready
+      await new Promise(resolve => setTimeout(resolve, 100));
+      
       const dataUrl = await toPng(outputRef.current, {
         backgroundColor: '#ffffff',
-        pixelRatio: 3, // Higher quality for mobile/print
-        skipFonts: false,
+        pixelRatio: 2, // Reduced from 3 for better mobile compatibility
+        cacheBust: true,
       });
       
       const filename = `${itemName || 'code'}-${Date.now()}.png`;
       
-      // Standard download
       const link = document.createElement('a');
       link.download = filename;
       link.href = dataUrl;
@@ -443,11 +453,7 @@ export default function App() {
           </motion.div>
 
           {/* Right Panel: Preview */}
-          <motion.div 
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="space-y-6 lg:sticky lg:top-24"
-          >
+          <div className="space-y-6 lg:sticky lg:top-24">
             <div className="bg-zinc-900/50 border border-zinc-800 rounded-[32px] p-6 md:p-12 min-h-[350px] md:min-h-[500px] flex flex-col items-center justify-center relative overflow-hidden">
               {/* Decorative elements */}
               <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
@@ -455,124 +461,115 @@ export default function App() {
                 <div className="absolute bottom-10 right-10 w-32 h-32 bg-emerald-500 rounded-full blur-[100px]" />
               </div>
 
-              <AnimatePresence mode="wait">
-                {generated ? (
-                  <motion.div 
-                    key="result"
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    className="w-full max-w-md space-y-8 flex flex-col items-center"
+              {isGenerating ? (
+                <div className="flex flex-col items-center gap-4">
+                  <RefreshCw className="w-12 h-12 text-indigo-500 animate-spin" />
+                  <p className="text-zinc-400 font-medium animate-pulse">Gerando seu código...</p>
+                </div>
+              ) : generated ? (
+                <div className="w-full max-w-md space-y-8 flex flex-col items-center">
+                  {/* The Downloadable Area */}
+                  <div 
+                    ref={outputRef}
+                    className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-4 md:gap-6 w-fit mx-auto"
                   >
-                    {/* The Downloadable Area */}
-                    <div 
-                      ref={outputRef}
-                      className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-4 md:gap-6 w-fit mx-auto"
-                    >
-                      {itemName && (
-                        <h3 className="text-zinc-900 font-bold text-lg md:text-xl tracking-tight text-center max-w-[200px] md:max-w-xs break-words">
-                          {itemName}
-                        </h3>
+                    {itemName && (
+                      <h3 className="text-zinc-900 font-bold text-lg md:text-xl tracking-tight text-center max-w-[200px] md:max-w-xs break-words">
+                        {itemName}
+                      </h3>
+                    )}
+                    
+                    <div className="bg-white p-2 flex items-center justify-center min-h-[150px]">
+                      {codeType === 'qrcode' ? (
+                        <div className="w-full flex justify-center">
+                          <QRCodeCanvas 
+                            value={data}
+                            size={qrSize > 512 ? 512 : qrSize}
+                            fgColor={qrColor}
+                            level="H"
+                            includeMargin={false}
+                            style={{ width: '100%', height: 'auto', maxWidth: '300px' }}
+                          />
+                        </div>
+                      ) : (
+                        <div className="overflow-x-auto max-w-full bg-white flex justify-center">
+                          <svg ref={barcodeRef}></svg>
+                        </div>
                       )}
-                      
-                      <div className="bg-white p-2">
-                        {codeType === 'qrcode' ? (
-                          <div className="w-full max-w-[200px] md:max-w-none">
-                            <QRCodeCanvas 
-                              value={data}
-                              size={qrSize > 400 ? 400 : qrSize} // Cap preview size for UI but keep download size
-                              fgColor={qrColor}
-                              level="H"
-                              includeMargin={false}
-                              style={{ width: '100%', height: 'auto' }}
-                            />
-                          </div>
-                        ) : (
-                          <div className="overflow-x-auto max-w-full">
-                            <svg ref={barcodeRef}></svg>
-                          </div>
-                        )}
-                      </div>
-
-                      <div className="pt-4 border-t border-zinc-100 w-full text-center">
-                        <p className="text-[8px] md:text-[10px] text-zinc-400 font-bold uppercase tracking-widest">
-                          Gerado via CodeCraft-Bryan
-                        </p>
-                      </div>
                     </div>
 
-                    <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full">
-                      <button 
-                        onClick={handleDownload}
-                        disabled={isGenerating}
-                        className="w-full sm:flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-6 rounded-2xl shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2"
-                      >
-                        {isGenerating ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Download className="w-5 h-5" />}
-                        Baixar PNG
-                      </button>
-                      
-                      {navigator.share && (
-                        <button 
-                          onClick={handleShare}
-                          className="w-full sm:flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-6 rounded-2xl shadow-lg shadow-indigo-500/20 transition-all flex items-center justify-center gap-2"
-                        >
-                          <Share2 className="w-5 h-5" />
-                          Compartilhar
-                        </button>
-                      )}
-
-                      <button 
-                        onClick={handleCopyLink}
-                        className="w-full sm:flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-4 px-6 rounded-2xl border border-zinc-700 transition-all flex items-center justify-center gap-2"
-                      >
-                        {copied ? (
-                          <>
-                            <CheckCircle2 className="w-5 h-5 text-emerald-400" />
-                            Copiado!
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-5 h-5" />
-                            Copiar Link
-                          </>
-                        )}
-                      </button>
-                    </div>
-
-                    <div className="w-full bg-zinc-950/50 border border-zinc-800 rounded-2xl p-4 flex items-center justify-between gap-4">
-                      <div className="flex-1 min-w-0">
-                        <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Conteúdo Codificado</p>
-                        <p className="text-sm text-zinc-300 truncate font-mono">{data}</p>
-                      </div>
-                      <a 
-                        href={data} 
-                        target="_blank" 
-                        rel="noopener noreferrer"
-                        className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-400 transition-colors"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                      </a>
-                    </div>
-                  </motion.div>
-                ) : (
-                  <motion.div 
-                    key="placeholder"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    className="text-center space-y-6"
-                  >
-                    <div className="w-24 h-24 bg-zinc-950 border border-zinc-800 rounded-[32px] flex items-center justify-center mx-auto shadow-inner">
-                      <QrCode className="w-10 h-10 text-zinc-700" />
-                    </div>
-                    <div>
-                      <h3 className="text-xl font-bold text-zinc-300">Aguardando Dados</h3>
-                      <p className="text-sm text-zinc-500 max-w-[240px] mx-auto mt-2">
-                        Preencha as informações ao lado para visualizar seu código.
+                    <div className="pt-4 border-t border-zinc-100 w-full text-center">
+                      <p className="text-[8px] md:text-[10px] text-zinc-400 font-bold uppercase tracking-widest">
+                        Gerado via CodeCraft-Bryan
                       </p>
                     </div>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+                  </div>
+
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full">
+                    <button 
+                      onClick={handleDownload}
+                      className="w-full sm:flex-1 bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-4 px-6 rounded-2xl shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Download className="w-5 h-5" />
+                      Baixar PNG
+                    </button>
+                    
+                    {navigator.share && (
+                      <button 
+                        onClick={handleShare}
+                        className="w-full sm:flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-6 rounded-2xl shadow-lg shadow-indigo-500/20 transition-all flex items-center justify-center gap-2"
+                      >
+                        <Share2 className="w-5 h-5" />
+                        Compartilhar
+                      </button>
+                    )}
+
+                    <button 
+                      onClick={handleCopyLink}
+                      className="w-full sm:flex-1 bg-zinc-800 hover:bg-zinc-700 text-white font-bold py-4 px-6 rounded-2xl border border-zinc-700 transition-all flex items-center justify-center gap-2"
+                    >
+                      {copied ? (
+                        <>
+                          <CheckCircle2 className="w-5 h-5 text-emerald-400" />
+                          Copiado!
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-5 h-5" />
+                          Copiar Link
+                        </>
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="w-full bg-zinc-950/50 border border-zinc-800 rounded-2xl p-4 flex items-center justify-between gap-4">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider mb-1">Conteúdo Codificado</p>
+                      <p className="text-sm text-zinc-300 truncate font-mono">{data}</p>
+                    </div>
+                    <a 
+                      href={data} 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="p-2 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-zinc-400 transition-colors"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </a>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center space-y-6">
+                  <div className="w-24 h-24 bg-zinc-950 border border-zinc-800 rounded-[32px] flex items-center justify-center mx-auto shadow-inner">
+                    <QrCode className="w-10 h-10 text-zinc-700" />
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-zinc-300">Aguardando Dados</h3>
+                    <p className="text-sm text-zinc-500 max-w-[240px] mx-auto mt-2">
+                      Preencha as informações ao lado para visualizar seu código.
+                    </p>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Features / Tips */}
@@ -589,7 +586,7 @@ export default function App() {
                 </div>
               ))}
             </div>
-          </motion.div>
+          </div>
         </div>
       </main>
 
