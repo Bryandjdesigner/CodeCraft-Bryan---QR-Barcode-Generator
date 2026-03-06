@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import JsBarcode from 'jsbarcode';
-import { toPng } from 'html-to-image';
+import { toPng, toBlob } from 'html-to-image';
 import { 
   QrCode, 
   Barcode, 
@@ -14,8 +14,12 @@ import {
   Copy,
   CheckCircle2,
   ExternalLink,
-  Coffee,
-  Share2
+  Share2,
+  Palette,
+  Maximize2,
+  AlertCircle,
+  Monitor,
+  Smartphone
 } from 'lucide-react';
 import { cn } from './lib/utils';
 
@@ -45,6 +49,7 @@ export default function App() {
   const [isGenerating, setIsGenerating] = useState(false);
   const [generated, setGenerated] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [viewMode, setViewMode] = useState<'pc' | 'mobile'>('pc');
   
   const outputRef = useRef<HTMLDivElement>(null);
   const barcodeRef = useRef<SVGSVGElement>(null);
@@ -70,31 +75,36 @@ export default function App() {
   const handleGenerate = () => {
     let finalData = '';
     if (dataType === 'whatsapp') {
-      if (!waPhone) return;
+      if (!waPhone) {
+        alert('Por favor, insira o número do WhatsApp.');
+        return;
+      }
       finalData = `https://wa.me/${waPhone.replace(/\D/g, '')}${waMessage ? `?text=${encodeURIComponent(waMessage)}` : ''}`;
     } else if (dataType === 'instagram') {
-      if (!igUsername) return;
+      if (!igUsername) {
+        alert('Por favor, insira o usuário do Instagram.');
+        return;
+      }
       finalData = `https://instagram.com/${igUsername.replace('@', '')}`;
     } else {
+      if (!data) {
+        alert('Por favor, insira o texto ou URL.');
+        return;
+      }
       finalData = data;
-    }
-
-    if (!finalData) {
-      alert('Por favor, insira os dados para gerar o código.');
-      return;
     }
 
     setIsGenerating(true);
     
-    // Small timeout to show loading state and ensure clean render
+    // Small timeout to ensure state update is processed
     setTimeout(() => {
       setData(finalData);
       setGenerated(true);
       setIsGenerating(false);
       
-      // Scroll to result on mobile - using a safer check
+      // Scroll to result on mobile
       const element = document.getElementById('result-preview');
-      if (element && window.innerWidth < 1024) {
+      if (element) {
         element.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
     }, 100);
@@ -105,26 +115,39 @@ export default function App() {
     
     setIsGenerating(true);
     try {
-      // Small delay to ensure DOM is ready
-      await new Promise(resolve => setTimeout(resolve, 100));
+      // Small delay to ensure DOM is ready and rendered
+      await new Promise(resolve => setTimeout(resolve, 1000));
       
+      // Use toPng with high quality and specific options for better compatibility
       const dataUrl = await toPng(outputRef.current, {
         backgroundColor: '#ffffff',
-        pixelRatio: 2, // Reduced from 3 for better mobile compatibility
+        pixelRatio: 3,
         cacheBust: true,
+        style: {
+          margin: '0',
+          padding: '20px',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center'
+        }
       });
       
-      const filename = `${itemName || 'code'}-${Date.now()}.png`;
+      if (!dataUrl) throw new Error('Falha ao gerar o arquivo');
+
+      const filename = `CodeCraft-${itemName.replace(/[^a-z0-9]/gi, '_') || 'code'}-${Date.now()}.png`;
       
+      // Create a temporary link and trigger download
       const link = document.createElement('a');
-      link.download = filename;
       link.href = dataUrl;
+      link.download = filename;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
+      
     } catch (err) {
       console.error('Download failed', err);
-      alert('Erro ao baixar imagem. Tente novamente.');
+      alert('O download automático falhou. No celular, você pode pressionar a imagem gerada por 2 segundos e escolher "Fazer download da imagem" ou usar o botão "Compartilhar".');
     } finally {
       setIsGenerating(false);
     }
@@ -133,40 +156,63 @@ export default function App() {
   const handleShare = async () => {
     if (!outputRef.current) return;
     
+    setIsGenerating(true);
     try {
-      const dataUrl = await toPng(outputRef.current, {
+      // Small delay to ensure DOM is ready
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      const blob = await toBlob(outputRef.current, {
         backgroundColor: '#ffffff',
         pixelRatio: 2,
+        cacheBust: true
       });
+
+      if (!blob) throw new Error('Falha ao gerar arquivo para compartilhamento');
       
-      const blob = await (await fetch(dataUrl)).blob();
-      const file = new File([blob], 'code.png', { type: 'image/png' });
+      const file = new File([blob], 'codecraft-code.png', { type: 'image/png' });
       
-      if (navigator.share && navigator.canShare({ files: [file] })) {
+      if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
         await navigator.share({
           files: [file],
           title: itemName || 'Meu Código',
           text: 'Gerado via CodeCraft-Bryan',
         });
       } else {
-        handleCopyLink();
+        // Fallback to download if share is not supported
+        const blobUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = 'codecraft-code.png';
+        link.click();
+        URL.revokeObjectURL(blobUrl);
+        alert('Compartilhamento não suportado neste navegador. O arquivo foi baixado.');
       }
     } catch (err) {
       console.error('Share failed', err);
-      handleCopyLink();
+      alert('Erro ao compartilhar. Tente baixar o arquivo diretamente.');
+    } finally {
+      setIsGenerating(false);
     }
   };
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(data);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(data).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }).catch(err => {
+        console.error('Copy failed', err);
+      });
+    } else {
+      // Fallback or just ignore
+      console.warn('Clipboard API not available');
+    }
   };
 
   return (
-    <div className="min-h-screen grid-pattern selection:bg-indigo-500/30">
-      <header className="border-b border-zinc-800 bg-zinc-950/50 backdrop-blur-xl sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+    <div className="min-h-screen bg-zinc-950 text-white selection:bg-indigo-500/30">
+      <header className="border-b border-zinc-800 bg-zinc-950/50 backdrop-blur-xl sticky top-0 z-50 px-4 py-4">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
               <QrCode className="text-white w-6 h-6" />
@@ -178,11 +224,6 @@ export default function App() {
           </div>
           
           <div className="flex items-center gap-4">
-            <button className="hidden sm:flex items-center gap-2 text-xs font-medium text-zinc-400 hover:text-white transition-colors">
-              <Coffee className="w-4 h-4" />
-              Apoie o Projeto
-            </button>
-            <div className="h-4 w-px bg-zinc-800 hidden sm:block" />
             <div className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 rounded-full border border-zinc-800">
               <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">System Active</span>
@@ -293,7 +334,7 @@ export default function App() {
                       type="text"
                       placeholder="Ex: Produto A, Link Bio..."
                       value={itemName}
-                      onChange={(e) => setItemName(e.target.value)}
+                      onChange={(e) => { setItemName(e.target.value); setGenerated(false); }}
                       className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
                     />
                   </div>
@@ -305,7 +346,7 @@ export default function App() {
                         rows={3}
                         placeholder="Digite o texto ou URL..."
                         value={data}
-                        onChange={(e) => setData(e.target.value)}
+                        onChange={(e) => { setData(e.target.value); setGenerated(false); }}
                         className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all resize-none"
                       />
                     </div>
@@ -319,7 +360,7 @@ export default function App() {
                           type="tel"
                           placeholder="Ex: 5511999999999"
                           value={waPhone}
-                          onChange={(e) => setWaPhone(e.target.value)}
+                          onChange={(e) => { setWaPhone(e.target.value); setGenerated(false); }}
                           className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
                         />
                       </div>
@@ -329,7 +370,7 @@ export default function App() {
                           type="text"
                           placeholder="Olá, gostaria de saber mais..."
                           value={waMessage}
-                          onChange={(e) => setWaMessage(e.target.value)}
+                          onChange={(e) => { setWaMessage(e.target.value); setGenerated(false); }}
                           className="w-full bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
                         />
                       </div>
@@ -345,7 +386,7 @@ export default function App() {
                           type="text"
                           placeholder="seu_usuario"
                           value={igUsername}
-                          onChange={(e) => setIgUsername(e.target.value)}
+                          onChange={(e) => { setIgUsername(e.target.value); setGenerated(false); }}
                           className="w-full bg-zinc-950 border border-zinc-800 rounded-xl pl-8 pr-4 py-2.5 text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
                         />
                       </div>
@@ -373,12 +414,18 @@ export default function App() {
             </section>
 
             <section className="bg-zinc-900/50 border border-zinc-800 rounded-3xl p-6 space-y-4">
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Personalização</h3>
+              <div className="flex items-center gap-2 text-zinc-500">
+                <Palette className="w-4 h-4" />
+                <h3 className="text-xs font-semibold uppercase tracking-wider">Personalização</h3>
+              </div>
               
               {codeType === 'qrcode' ? (
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-zinc-600 uppercase">Tamanho</label>
+                    <label className="text-[10px] font-bold text-zinc-600 uppercase flex items-center gap-1">
+                      <Maximize2 className="w-3 h-3" />
+                      Tamanho
+                    </label>
                     <select 
                       value={qrSize}
                       onChange={(e) => setQrSize(Number(e.target.value))}
@@ -450,7 +497,36 @@ export default function App() {
 
           {/* Right Panel: Preview */}
           <div id="result-preview" className="space-y-6 lg:sticky lg:top-24">
-            <div className="bg-zinc-900/80 border border-zinc-800 rounded-[32px] p-6 md:p-12 min-h-[350px] md:min-h-[500px] flex flex-col items-center justify-center relative overflow-hidden shadow-xl">
+            <div className="flex items-center justify-between bg-zinc-900/50 border border-zinc-800 p-2 rounded-2xl">
+              <p className="text-[10px] font-bold text-zinc-500 uppercase tracking-widest ml-2">Visualização</p>
+              <div className="flex gap-1">
+                <button 
+                  onClick={() => setViewMode('pc')}
+                  className={cn(
+                    "p-2 rounded-xl transition-all flex items-center gap-2 text-xs font-medium",
+                    viewMode === 'pc' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "text-zinc-500 hover:bg-zinc-800"
+                  )}
+                >
+                  <Monitor className="w-4 h-4" />
+                  PC
+                </button>
+                <button 
+                  onClick={() => setViewMode('mobile')}
+                  className={cn(
+                    "p-2 rounded-xl transition-all flex items-center gap-2 text-xs font-medium",
+                    viewMode === 'mobile' ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20" : "text-zinc-500 hover:bg-zinc-800"
+                  )}
+                >
+                  <Smartphone className="w-4 h-4" />
+                  Mobile
+                </button>
+              </div>
+            </div>
+
+            <div className={cn(
+              "bg-zinc-900/80 border border-zinc-800 rounded-[32px] p-6 md:p-12 min-h-[350px] md:min-h-[500px] flex flex-col items-center justify-center relative overflow-hidden shadow-xl transition-all duration-500 mx-auto",
+              viewMode === 'mobile' ? "max-w-[380px]" : "w-full"
+            )}>
               {/* Decorative elements */}
               <div className="absolute top-0 left-0 w-full h-full pointer-events-none opacity-20">
                 <div className="absolute top-10 left-10 w-32 h-32 bg-indigo-500 rounded-full blur-[100px]" />
@@ -488,8 +564,10 @@ export default function App() {
                           />
                         </div>
                       ) : (
-                        <div className="overflow-x-auto max-w-full bg-white flex justify-center">
-                          <svg ref={barcodeRef}></svg>
+                        <div className="w-full max-w-full bg-white flex justify-center overflow-hidden">
+                          <div className="scale-75 sm:scale-100 transition-transform origin-center">
+                            <svg ref={barcodeRef} className="max-w-full h-auto"></svg>
+                          </div>
                         </div>
                       )}
                     </div>
@@ -510,15 +588,13 @@ export default function App() {
                       Baixar PNG
                     </button>
                     
-                    {navigator.share && (
-                      <button 
-                        onClick={handleShare}
-                        className="w-full sm:flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-6 rounded-2xl shadow-lg shadow-indigo-500/20 transition-all flex items-center justify-center gap-2"
-                      >
-                        <Share2 className="w-5 h-5" />
-                        Compartilhar
-                      </button>
-                    )}
+                    <button 
+                      onClick={handleShare}
+                      className="w-full sm:flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-4 px-6 rounded-2xl shadow-lg shadow-indigo-500/20 transition-all flex items-center justify-center gap-2"
+                    >
+                      <Share2 className="w-5 h-5" />
+                      Compartilhar
+                    </button>
 
                     <button 
                       onClick={handleCopyLink}
@@ -567,21 +643,6 @@ export default function App() {
                 </div>
               )}
             </div>
-
-            {/* Features / Tips */}
-            <div className="grid sm:grid-cols-3 gap-4">
-              {[
-                { icon: <Download className="w-4 h-4" />, title: "Alta Qualidade", desc: "Downloads em PNG de alta resolução." },
-                { icon: <Settings2 className="w-4 h-4" />, title: "Personalizável", desc: "Ajuste cores, tamanhos e formatos." },
-                { icon: <CheckCircle2 className="w-4 h-4" />, title: "Profissional", desc: "Ideal para produtos e marketing." }
-              ].map((feature, i) => (
-                <div key={i} className="bg-zinc-900/30 border border-zinc-800/50 rounded-2xl p-4 space-y-2">
-                  <div className="text-indigo-500">{feature.icon}</div>
-                  <h4 className="text-xs font-bold text-zinc-200 uppercase tracking-wide">{feature.title}</h4>
-                  <p className="text-[10px] text-zinc-500 leading-relaxed">{feature.desc}</p>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
       </main>
@@ -591,11 +652,6 @@ export default function App() {
           <p className="text-zinc-500 text-sm">
             © {new Date().getFullYear()} CodeCraft. Ferramenta gratuita para geração de códigos.
           </p>
-          <div className="flex items-center justify-center gap-6">
-            <button className="text-xs font-medium text-zinc-400 hover:text-white transition-colors">Privacidade</button>
-            <button className="text-xs font-medium text-zinc-400 hover:text-white transition-colors">Termos</button>
-            <button className="text-xs font-medium text-zinc-400 hover:text-white transition-colors">Contato</button>
-          </div>
         </div>
       </footer>
     </div>
