@@ -50,6 +50,7 @@ export default function App() {
   const [generated, setGenerated] = useState(false);
   const [copied, setCopied] = useState(false);
   const [viewMode, setViewMode] = useState<'pc' | 'mobile'>('pc');
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   
   const outputRef = useRef<HTMLDivElement>(null);
   const barcodeRef = useRef<SVGSVGElement>(null);
@@ -61,16 +62,48 @@ export default function App() {
           format: codeType,
           width: barcodeWidth,
           height: barcodeHeight,
-          displayValue: true,
+          displayValue: false,
           lineColor: barcodeColor,
-          background: '#ffffff',
-          margin: 10
+          background: 'transparent',
+          margin: 0
         });
       } catch (e) {
         console.error('Barcode generation error:', e);
       }
     }
   }, [codeType, data, barcodeWidth, barcodeHeight, barcodeColor, generated]);
+
+  useEffect(() => {
+    if (generated && outputRef.current) {
+      const createPreview = async () => {
+        try {
+          // Reset preview while generating
+          setPreviewImage(null);
+          
+          // Wait for rendering to stabilize
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          if (!outputRef.current) return;
+
+          // Capture with specific dimensions to ensure no shifting
+          const dataUrl = await toPng(outputRef.current, {
+            backgroundColor: '#ffffff',
+            width: 400,
+            height: 400,
+            pixelRatio: 3,
+            cacheBust: true,
+          });
+          
+          setPreviewImage(dataUrl);
+        } catch (err) {
+          console.error('Preview generation failed', err);
+        }
+      };
+      createPreview();
+    } else {
+      setPreviewImage(null);
+    }
+  }, [generated, data, codeType, itemName, qrSize, qrColor, barcodeWidth, barcodeHeight, barcodeColor]);
 
   const handleGenerate = () => {
     let finalData = '';
@@ -111,27 +144,20 @@ export default function App() {
   };
 
   const handleDownload = async () => {
-    if (!outputRef.current) return;
+    if (!outputRef.current && !previewImage) return;
     
     setIsGenerating(true);
     try {
-      // Small delay to ensure DOM is ready and rendered
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Use toPng with high quality and specific options for better compatibility
-      const dataUrl = await toPng(outputRef.current, {
-        backgroundColor: '#ffffff',
-        pixelRatio: 3,
-        cacheBust: true,
-        style: {
-          margin: '0',
-          padding: '20px',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          justifyContent: 'center'
-        }
-      });
+      let dataUrl = previewImage;
+
+      if (!dataUrl && outputRef.current) {
+        // Fallback if preview isn't ready yet
+        dataUrl = await toPng(outputRef.current, {
+          backgroundColor: '#ffffff',
+          pixelRatio: 3,
+          cacheBust: true,
+        });
+      }
       
       if (!dataUrl) throw new Error('Falha ao gerar o arquivo');
 
@@ -147,25 +173,29 @@ export default function App() {
       
     } catch (err) {
       console.error('Download failed', err);
-      alert('O download automático falhou. No celular, você pode pressionar a imagem gerada por 2 segundos e escolher "Fazer download da imagem" ou usar o botão "Compartilhar".');
+      alert('O download automático falhou. Você pode clicar e arrastar a imagem acima para sua área de trabalho ou pressionar e segurar para salvar.');
     } finally {
       setIsGenerating(false);
     }
   };
 
   const handleShare = async () => {
-    if (!outputRef.current) return;
+    if (!outputRef.current && !previewImage) return;
     
     setIsGenerating(true);
     try {
-      // Small delay to ensure DOM is ready
-      await new Promise(resolve => setTimeout(resolve, 500));
+      let blob: Blob | null = null;
 
-      const blob = await toBlob(outputRef.current, {
-        backgroundColor: '#ffffff',
-        pixelRatio: 2,
-        cacheBust: true
-      });
+      if (previewImage) {
+        const response = await fetch(previewImage);
+        blob = await response.blob();
+      } else if (outputRef.current) {
+        blob = await toBlob(outputRef.current, {
+          backgroundColor: '#ffffff',
+          pixelRatio: 2,
+          cacheBust: true
+        });
+      }
 
       if (!blob) throw new Error('Falha ao gerar arquivo para compartilhamento');
       
@@ -540,43 +570,93 @@ export default function App() {
                 </div>
               ) : generated ? (
                 <div className="w-full max-w-md space-y-8 flex flex-col items-center">
-                  {/* The Downloadable Area */}
-                  <div 
-                    ref={outputRef}
-                    className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-4 md:gap-6 w-fit mx-auto"
-                  >
-                    {itemName && (
-                      <h3 className="text-zinc-900 font-bold text-lg md:text-xl tracking-tight text-center max-w-[200px] md:max-w-xs break-words">
-                        {itemName}
-                      </h3>
-                    )}
-                    
-                    <div className="bg-white p-2 flex items-center justify-center min-h-[150px]">
-                      {codeType === 'qrcode' ? (
-                        <div className="w-full flex justify-center">
-                          <QRCodeSVG 
-                            value={data}
-                            size={qrSize > 512 ? 512 : qrSize}
-                            fgColor={qrColor}
-                            level="H"
-                            includeMargin={false}
-                            style={{ width: '100%', height: 'auto', maxWidth: '300px' }}
-                          />
+                  {/* The Downloadable Area - Isolated for perfect capture */}
+                  <div className="absolute -left-[9999px] top-0 pointer-events-none">
+                    <div 
+                      ref={outputRef}
+                      className="bg-white flex flex-col items-center justify-between py-12 px-8 relative overflow-hidden"
+                      style={{ 
+                        width: '400px', 
+                        height: '400px',
+                        borderRadius: '48px'
+                      }}
+                    >
+                      {/* Header - Top */}
+                      <div className="w-full text-center">
+                        {itemName ? (
+                          <div className="space-y-1.5">
+                            <h3 className="text-zinc-900 font-black text-xl tracking-tighter uppercase truncate leading-none">
+                              {itemName}
+                            </h3>
+                            <div className="h-1.5 w-12 bg-indigo-600 mx-auto rounded-full" />
+                          </div>
+                        ) : (
+                          <div className="h-8" />
+                        )}
+                      </div>
+                      
+                      {/* The Code - Centered in the remaining space */}
+                      <div className="flex-1 w-full flex items-center justify-center overflow-hidden">
+                        <div className="flex items-center justify-center w-full h-full max-w-[280px] max-h-[260px]">
+                          {codeType === 'qrcode' ? (
+                            <QRCodeSVG 
+                              value={data}
+                              size={240}
+                              fgColor={qrColor}
+                              level="H"
+                              includeMargin={false}
+                              style={{ width: '100%', height: '100%', maxWidth: '240px', maxHeight: '240px' }}
+                            />
+                          ) : (
+                            <div className="w-full h-full flex justify-center items-center">
+                              <svg ref={barcodeRef} style={{ maxWidth: '100%', height: 'auto', display: 'block' }}></svg>
+                            </div>
+                          )}
                         </div>
-                      ) : (
-                        <div className="w-full max-w-full bg-white flex justify-center overflow-hidden">
-                          <div className="scale-75 sm:scale-100 transition-transform origin-center">
-                            <svg ref={barcodeRef} className="max-w-full h-auto"></svg>
+                      </div>
+
+                      {/* Footer - Bottom */}
+                      <div className="w-full flex flex-col items-center gap-1.5">
+                        <p className="text-[10px] text-zinc-400 font-black uppercase tracking-[0.25em]">
+                          CodeCraft Premium
+                        </p>
+                        <div className="h-px w-8 bg-zinc-200" />
+                        <p className="text-[8px] text-zinc-300 font-mono">
+                          #{Math.random().toString(36).substring(7).toUpperCase()}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Preview / Interaction Area */}
+                  <div className="w-full flex flex-col items-center justify-center min-h-[400px]">
+                    {!previewImage ? (
+                      <div className="flex flex-col items-center gap-4 animate-pulse">
+                        <div className="w-[400px] h-[400px] bg-zinc-900/50 rounded-[48px] border border-zinc-800 flex items-center justify-center">
+                          <RefreshCw className="w-8 h-8 text-zinc-700 animate-spin" />
+                        </div>
+                        <p className="text-xs text-zinc-500 font-medium uppercase tracking-widest">Renderizando...</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4 flex flex-col items-center animate-in fade-in zoom-in duration-500">
+                        <div className="relative group">
+                          <div className="bg-white rounded-[48px] shadow-[0_32px_64px_-16px_rgba(0,0,0,0.25)] overflow-hidden border border-zinc-100">
+                            <img 
+                              src={previewImage} 
+                              alt="Código Gerado" 
+                              className="w-[400px] h-[400px] block select-none pointer-events-auto cursor-grab active:cursor-grabbing"
+                              draggable="true"
+                            />
+                          </div>
+                          <div className="absolute -top-3 -right-3 bg-indigo-600 text-white text-[10px] font-black px-3 py-1 rounded-full shadow-lg uppercase tracking-wider">
+                            Arraste para Salvar
                           </div>
                         </div>
-                      )}
-                    </div>
-
-                    <div className="pt-4 border-t border-zinc-100 w-full text-center">
-                      <p className="text-[8px] md:text-[10px] text-zinc-400 font-bold uppercase tracking-widest">
-                        Gerado via CodeCraft-Bryan
-                      </p>
-                    </div>
+                        <p className="text-zinc-500 text-[10px] font-medium text-center max-w-[250px]">
+                          DICA: Você pode clicar e arrastar a imagem acima diretamente para sua área de trabalho ou galeria.
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex flex-col sm:flex-row items-center justify-center gap-3 w-full">
